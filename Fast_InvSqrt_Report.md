@@ -1,4 +1,7 @@
 # Fast Inverse Square Root 
+
+[![hackmd-github-sync-badge](https://hackmd.io/rt8_bd2bQoOsxdp7CHHarw/badge)](https://hackmd.io/rt8_bd2bQoOsxdp7CHHarw)
+
 ## 反平方根快速演算法
 
 ### 16 程朗 17 黃品睿 20 廖乃頡
