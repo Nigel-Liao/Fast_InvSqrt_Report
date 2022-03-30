@@ -49,6 +49,6 @@ int main()
 
         t3 = clock();
 
-        printf("1/Sqrt(): %ld(ms)\nInvSqrt(): %ld(ms)\nRatio: %ld\n", t2 - t1, t3 - t2, (t2 - t1) / (t3 - t2));
+        printf("1/Sqrt(): %ld(ms)\nInvSqrt(): %ld(ms)\nRatio: %lf\n", t2 - t1, t3 - t2, (float(t2) - float(t1)) / (float(t3) - float(t2)));
     }
 }
