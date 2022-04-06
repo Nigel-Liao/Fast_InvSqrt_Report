@@ -5,6 +5,8 @@ description: Report on Inverse Square Root Fast Algorithm
 image: https://i0.wp.com/blogs.embarcadero.com/wp-content/uploads/2021/01/Delphi-Fast-Inverse-Square-Root-Quake-3-Arena-6465040.jpg?resize=1140%2C675&ssl=1
 type: slide
 robots: noindex, nofollow
+transition: 'slide'
+
 ---
 
 ## Fast Inverse Square Root
@@ -17,6 +19,11 @@ robots: noindex, nofollow
 
 Fast Inverse Square Root，  
 或是 Fast InvSqrt()  
+是計算一個數的根號分之一的快速算法
+
+$$
+f(x) = \frac{1}{\sqrt{x}}
+$$
 
 ----
 
@@ -103,84 +110,306 @@ Quake III Arena
 
 ---
 
-## 運作機制
+## 程式碼
 
 ----
 
 Carmack在Quake III中的原始碼  
-```
+
+```c
+#if !idppc
+/*
+** float q_rsqrt( float number )
+*/
 float Q_rsqrt( float number )
 {
-	long i;
-	float x2, y;
-	const float threehalfs = 1.5F;
+    long i;
+    float x2, y;
+    const float threehalfs = 1.5F;
 
-	x2 = number * 0.5F;
-	y  = number;
-	i  = * ( long * ) &y;                       // evil floating point bit level hacking
-	i  = 0x5f3759df - ( i >> 1 );               // what the fuck? 
-	y  = * ( float * ) &i;
-	y  = y * ( threehalfs - ( x2 * y * y ) );   // 1st iteration
+    x2 = number * 0.5F;
+    y  = number;
+    i  = * ( long * ) &y;    // evil floating point bit level hacking
+    i  = 0x5f3759df - ( i >> 1 );    // what the fuck?
+    y  = * ( float * ) &i;
+    y  = y * ( threehalfs - ( x2 * y * y ) );   // 1st iteration
 //	y  = y * ( threehalfs - ( x2 * y * y ) );   // 2nd iteration, this can be removed
 
-	return y;
+#ifndef Q3_VM
+#ifdef __linux__
+    assert( !isnan(y) ); // bk010122 - FPE?
+#endif
+#endif
+    return y;
 }
+
+float Q_fabs( float f ) {
+    int tmp = * ( int * ) &f;
+    tmp &= 0x7FFFFFFF;
+    return * ( float * ) &tmp;
+}
+#endif
+```
+##### <span>註：halfs 應拼為 halves<!-- .element: class="fragment" data-fragment-index="3" --></span>
+
+---
+
+## IEEE 754
+
+#### 儲存浮點數的方法
+
+![qr](https://i.imgur.com/9MRN4Kg.png =300x300)  
+https://www.h-schmidt.net/FloatConverter/IEEE754.html
+<!-- 給同學玩一玩 IEEE754 儲存浮點數的方法 -->
+
+----
+
+#### float
+
+![float](https://i.imgur.com/z5hmqIl.png)
+
+fraction = mantissa = $M$
+exponent = $E$
+sign = $S$ (= 0)
+
+$$
+x = (-1)^S(1+\frac{M}{2^{23}}) \times 2^{E-127}
+$$
+
+---
+
+### 原理
+
+$$
+\begin{align*}
+\log_2 x &= \log_2((1+\frac{M}{2^{23}}) \times 2^{E-127}) \\
+&= \log_2(1+\frac{M}{2^{23}}) + E - 127
+\end{align*}
+$$
+
+----
+
+![graph](https://i.imgur.com/RcSv4UC.png =594x550)
+
+$$
+\log_2(1+x) \approx x + 0.0430 \quad \textrm{for } x \in [0, 1]
+$$
+
+----
+
+$$
+\begin{align*}
+&\mspace{25mu}\log_2(1+\frac{M}{2^{23}}) + E - 127 \\
+&\approx \frac{M}{2^{23}} + 0.0430 + E - 127 \\
+&= 2^{-23}(\color{pink} {E \times 2^{23} + M}) - 126.957
+\end{align*}
+$$
+
+----
+
+$\color{pink} {2^{23}E + M}$ 就是……
+![img](https://i.imgur.com/4tAwPzO.png)
+把此浮點數當成一個整數 `long` 來看的值！！
+
+在計算$\tfrac{1}{\sqrt{x}}$時，我們可以利用這個技巧，  
+將我們的 $x$ 換成他的 $\log$ 值，  
+這樣拿來作運算會方便的多！
+
+$$
+\color{lime} {\small \log_2((1+\frac{M}{2^{23}}) \times 2^{E-127}) \approx 2^{-23}(E \times 2^{23} + M) - 126.957}
+$$
+
+---
+
+### 逐步分析
+
+----
+
+```c
+float Q_rsqrt(float number) {
+    long i;
+    float x2, y;
+    const float threehalfs = 1.5F;
+    x2 = number * 0.5F;
+    y  = number;
+```
+
+----
+
+```c
+    i  = * ( long * ) &y;    // evil floating point bit level hacking
+```
+
+把y這個float裡的資料直接塞進i這個long裡面
+
+![floating point bit hack](https://i.imgur.com/uUQ798d.jpg)
+
+
+
+----
+
+```c
+    i  = 0x5f3759df - ( i >> 1 );      // what the fuck?
+```
+
+----
+
+設算出來的 $\tfrac{1}{\sqrt{x}}$ 為 $a = (1+\tfrac{M_a}{2^{23}}) \times 2^{E_a - 127}$，  
+及欲求反平方根之數為 $b = (1+\tfrac{M_b}{2^{23}}) \times 2^{E_b - 127}$，  
+浮點數整數化整理可得:
+
+----
+
+$$
+(1+\frac{M_a}{2^{23}}) \times 2^{E_a-127} = ((1+\frac{M_b}{2^{23}}) \times 2^{E_b - 127})^{-\tfrac{1}{2}} \\
+\scriptsize \log_2((1+\frac{M_a}{2^{23}}) \times 2^{E_a-127}) = \log_2(((1+\frac{M_b}{2^{23}}) \times 2^{E_b - 127})^{-\tfrac{1}{2}})\\
+2^{-23}(E_a \times 2^{23} + M_a) - 126.957 \\
+= -\tfrac{1}{2}(2^{-23}(E_b \times 2^{23} + M_b) - 126.957) \\
+E_a \times 2^{23} + M_a \approx \color{pink} {1.597 \times 10^9} - \frac{1}{2}(E_b \times 2^{23} + M_b)
+$$
+
+----
+
+$$
+E_a \times 2^{23} + M_a \approx \color{pink} {1.597 \times 10^9} - \frac{1}{2}(E_b \times 2^{23} + M_b) \\
+(1.597 \times 10^9)_{10} = \textrm{5f3759df}_{16}
+$$
+
+----
+
+```c
+    y  = * ( float * ) &i;
+```
+把i這個long記憶體區塊裡面放的資料  
+硬塞進y這個float記憶體區塊中  
+
+----
+
+```c
+    y  = y * ( threehalfs - ( x2 * y * y ) );   // 1st iteration
+    // y  = y * ( threehalfs - ( x2 * y * y ) );
+    // 2nd iteration, this can be removed
+    return y;
+}
+```
+
+Newton's method!!  
+使用牛頓法來使我們大概  
+算出來的反平方根值更準確
+
+----
+
+![newton's method](https://tutorial.math.lamar.edu/classes/calci/NewtonsMethod_Files/image001.png =630x360)
+
+$$
+x_1 = x_0 - \frac{f(x_0)}{f'(x_0)}
+$$
+
+----
+
+如果我們製造一形如
+
+$$
+f(y) = \frac{1}{y^2} - \textrm{number}
+$$
+
+的函數的話，那麼 $f(y)$ 應該要等於 $0$
+
+所以呢，我們可以運用牛頓法，得到更準確的 $y$
+
+----
+
+$$
+f(y) = \frac{1}{y^2} - n \\
+f'(y) = -\frac{2}{y^3} \\
+$$
+
+----
+
+$$
+\begin{align*}
+y_1 &= y_0 - \frac{f(y_0)}{f'(y_0)} \\
+    &= y_0 - \frac{\frac{1}{y_0^2} - n}{\frac{-2}{y_0^3}} \\
+    &= y_0 + \frac{y_0}{2} - \frac{ny_0^3}{2} \\
+    &= y_0(1.5 - \frac{n}{2}y_0^2)
+\end{align*}
+$$
+
+```c
+    y = y (threehalfs - x2 * y * y);  // (x2 = n/2)
 ```
 
 ---
 
-## 浮點數表示法
+### 結語  
+
+---
+
+Fast InvSqrt()，比尋常方法快約三到四倍。  
+縱使代價為精準度下降1%，  
+但仍是2000年左右遊戲常用到的光學演算方式。
 
 ----
 
-### 小數表示法 
+#### 現在呢？
 
-$$
-significand \times base^{exponent}
-$$
-
-$$
-eg. 1.2345 = 12345 \times 10^{-4}
-$$
+在 Quake 3 發布幾年後，  
+英特爾發布了x86 SSE指令集，  
+其中包括硬件中的SQRT功能！  
 
 ----
 
-### 記憶體
-對一個n bits的浮點數x而言:  
-![float-pointing](https://miro.medium.com/max/1400/1*tu8UHXww5mM6ndUVNA_dAg.png)
+#### SQRT
+
+現在，如果寫 <code> x**(-1/2) </code> 不會調用牛頓例程  
+(Newton routine)，而只是調用RSQRTSS指令。
+
+更快，也更簡單。
 
 ----
 
-x表示為:
-
-
-$$
-x=(-1)^{s}(1+m_x)2^{e_x}
-$$
-
->$s$ = sign = 0  
-$m_x$ = matissa  
-$e_x$ = exponent  
-平方根內為正數，所以$s$為0  
+雖然在硬體更新後，這方法已不必繼續使用。  
+但靠軟體勝過硬體限制，或許不會有Quake III  
+不會促使SSE誕生，也不會有現金蓬勃的遊戲市場  
 
 ----
 
-$$
-log_2(x) = log_2((1+m_x)2^{e_x}) \\
-= log_2(1+{m_x})+{e_x}
-$$
-
-$$
-I_x = E_xL + M_x \\
-e_x = E_x - B \\
-$$
+最後，  
+向這些電腦駭客，  
+獻上最大的敬意。  
 
 ----
 
-### IEEE754 表示浮點數的方法
+![faster](http://i.imgur.com/WHMBN.gif)
+##### John D.Carmack II: 快，還要更快!
 
-假設今天我們想要把3.1415這個數放在一個float裡
-電腦會怎麼樣儲存它呢？
-並不是直接把他換成二進制
-11.00100100001110
-存起來喔
+---
+
+### Q&A
+
+----
+
+##### **P.S. 我有這款遊戲，可以來試玩看看。**
+
+----
+
+參考資料:
+
+> https://www.youtube.com/watch?v=p8u_k2LIZyo&t=745s
+> https://levelup.gitconnected.com/death-of-quake-3s-inverse-square-root-hack-32fd2eadd7b7
+> https://matthewarcus.wordpress.com/2012/11/19/134/
+> https://stackoverflow.com/questions/47946741/what-does-i-long-y-do
+> https://213style.blogspot.com/2014/07/john-carmack.html
+> https://en.wikipedia.org/wiki/Fast_inverse_square_root
+> https://github.com/id-Software/Quake-III-Arena/blob/dbe4ddb10315479fc00086f08e25d968b4b43c49/code/game/q_math.c
+> https://www.felixcloutier.com/x86/sqrtss
+> https://www.felixcloutier.com/x86/rsqrtss
+> https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html
+> https://gcc.gnu.org
+> http://www.matrix67.com/data/InvSqrt.pdf
+
+---
+
+### 報告到此結束
+
+謝謝大家
