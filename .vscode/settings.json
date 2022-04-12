@@ -1,0 +1,16 @@
+{
+  "editor.formatOnType": true,
+  "editor.formatOnSave": true,
+  "editor.snippetSuggestions": "top",
+  "code-runner.runInTerminal": true,
+  "code-runner.executorMap": {
+    "c": "clang $fileName -o $fileNameWithoutExt.out -lm && $dir$fileNameWithoutExt.out",
+    "cpp": "g++ $fileName -o $fileNameWithoutExt.out -lm && $dir$fileNameWithoutExt.out"
+  },
+  "code-runner.saveFileBeforeRun": true,
+  "code-runner.preserveFocus": false,
+  "code-runner.clearPreviousOutput": false,
+  "C_Cpp.clang_format_sortIncludes": true,
+  "C_Cpp.intelliSenseEngine": "Default",
+  "files.associations": { "iostream": "cpp", "cmath": "cpp" }
+}
